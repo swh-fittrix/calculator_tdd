@@ -6,119 +6,68 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:caculator_tdd/src/core/usecases/usecase.dart';
-import 'package:caculator_tdd/src/features/calculate.dart';
-import 'package:caculator_tdd/src/models/result.dart';
+import 'package:caculator_tdd/src/features/calculators.dart';
+import 'package:caculator_tdd/src/features/custom_failure.dart';
+import 'package:caculator_tdd/src/models/answer.dart';
+import 'package:caculator_tdd/src/models/operand.dart';
 import 'package:caculator_tdd/src/models/user_input.dart';
-import 'package:caculator_tdd/src/utils/app_utils.dart';
+import 'package:caculator_tdd/src/repository/input_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fpdart/fpdart.dart';
 
 void main() {
   group('사칙연산', () {
-    test('더하기', () {
-      final add = Add().calulate(const Result(left: 3, right: 0));
-      expect(add, const Right(Result(left: 3, right: 0, result: 3)));
+    test('덧셈', () {
+      final add = Calulators.add().calulate(const Operand(left: 1, right: 2));
+      final answer = add.getOrElse((l) => const Answer(0));
+      expect(answer.value, 3);
     });
 
-    test('빼기', () {
-      final sub = Sub().calulate(const Result(left: 3, right: 0));
-      expect(sub, const Right(Result(left: 3, right: 0, result: 3)));
+    test('뺄셈', () {
+      final sub = Calulators.sub().calulate(const Operand(left: 1, right: 2));
+      final answer = sub.getOrElse((l) => const Answer(0));
+      expect(answer.value, -1);
     });
 
-    test('곱하기', () {
-      final mul = Mul().calulate(const Result(left: 3, right: 0));
-      expect(mul, const Right(Result(left: 3, right: 0, result: 0)));
+    test('곱셈', () {
+      final mul = Calulators.mul().calulate(const Operand(left: 1, right: 2));
+      final answer = mul.getOrElse((l) => const Answer(0));
+      expect(answer.value, 2);
+    });
+
+    test('나눗셈', () {
+      final div = Calulators.div().calulate(const Operand(left: 1, right: 2));
+      final answer = div.getOrElse((l) => const Answer(0));
+      expect(answer.value, 0.5);
     });
 
     test('나누기 에러', () {
-      final div = Div().calulate(const Result(left: 3, right: 0));
-      expect(div, const Left('Cannot divide by zero'));
-    });
-
-    test('나누기', () {
-      final div = Div().calulate(const Result(left: 3, right: 1));
-      expect(div, const Right(Result(left: 3, right: 1, result: 3)));
+      final div = Calulators.div().calulate(const Operand(left: 1, right: 0));
+      final answer = div.fold((l) => l, (r) => r);
+      expect(answer, const CustomFailure('Cannot divide by zero'));
     });
   });
 
   group(
     '입력 값 변환',
     () {
+      InputRepository repository = InputRepository();
+
       test(
         '성공',
         () {
-          const input = '99.99 + 11.11';
-          final answer = AppUtils.parseInput(input);
-          final right = answer.match((l) => null, (r) => r);
-
-          expect(answer.isRight(), true);
-          expect(right, isA<UserInput>());
+          final (operand, operatorString) = repository.getOperand(UserInput('1 + 2'));
+          expect(operand.left, 1);
+          expect(operand.right, 2);
+          expect(operatorString, '+');
         },
       );
 
       test(
         '실패',
         () {
-          const input = '99.99 + 11.11 + 11.11';
-          final answer = AppUtils.parseInput(input);
-          expect(answer, const Left('input is not valid'));
-
-          const String? input2 = null;
-          final answer2 = AppUtils.parseInput(input2);
-          expect(answer2, const Left('input is not valid'));
-        },
-      );
-    },
-  );
-
-  group(
-    '연산자 얻기',
-    () {
-      test(
-        '덧셈',
-        () {
-          final operation = AppUtils.getOperation('+');
-          final right = operation.match((l) => null, (r) => r);
-          expect(operation.isRight(), true);
-          expect(right, isA<Add>());
-        },
-      );
-
-      test(
-        '뺄셈',
-        () {
-          final operation = AppUtils.getOperation('-');
-          final right = operation.match((l) => null, (r) => r);
-          expect(operation.isRight(), true);
-          expect(right, isA<Sub>());
-        },
-      );
-
-      test(
-        '곱셈',
-        () {
-          final operation = AppUtils.getOperation('*');
-          final right = operation.match((l) => null, (r) => r);
-          expect(operation.isRight(), true);
-          expect(right, isA<Mul>());
-        },
-      );
-
-      test(
-        '나눗셈',
-        () {
-          final operation = AppUtils.getOperation('/');
-          final right = operation.match((l) => null, (r) => r);
-          expect(operation.isRight(), true);
-          expect(right, isA<Div>());
-        },
-      );
-
-      test(
-        '실패',
-        () {
-          final operation = AppUtils.getOperation('a');
-          expect(operation, const Left('operation is not valid'));
+          final operatorClass = repository.getOperatorClass('a');
+          expect(operatorClass, isA<Left<CustomFailure, Calulators>>());
         },
       );
     },
@@ -128,13 +77,15 @@ void main() {
     '유즈케이스를 이용한 나누기',
     () {
       test('나누기 에러', () {
-        final div = UseCases().requestCalculate('3 / 0');
-        expect(div, const Left('Cannot divide by zero'));
+        final userInput = UserInput('1 / 0');
+        final result = UseCases.requestCalculate(userInput);
+        expect(result, 'Cannot divide by zero');
       });
 
       test('나누기', () {
-        final div = UseCases().requestCalculate('99.99 / 11.11');
-        expect(div, const Right(Result(left: 99.99, right: 11.11, result: 9)));
+        final userInput = UserInput('1 / 2');
+        final result = UseCases.requestCalculate(userInput);
+        expect(result, 'result: 0.5');
       });
     },
   );
